@@ -2,36 +2,49 @@ package api
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
 type Loader interface {
-	Load(r *http.Request) ([]byte, error)
+	Load(remote string) ([]string, error)
 }
-type Decoder interface {
-	Decode(data []byte) ([]string, error)
+type Parser interface {
+	Parse(line string) (bool, any, error)
 }
-type Render interface {
-	IsValid(line string) bool
-	Render(line string) (string, error)
-}
-type Merger interface {
-	Merge(lines []string) (string, error)
+type Generator interface {
+	Generate(proxies []any) (string, error)
 }
 
-type HTTPLoader struct{}
+type ShadowSocks struct {
+	Name              string `json:"name"`
+	Type              string `json:"type"`
+	Server            string `json:"server"`
+	Port              int    `json:"port"`
+	Cipher            string `json:"cipher"`
+	Password          string `json:"password"`
+	Udp               bool   `json:"udp"`
+	UdpOverTcp        bool   `json:"udp-over-tcp"`
+	UdpOverTcpVersion int    `json:"udp-over-tcp-version"`
+	IpVersion         string `json:"ip-version"`
+	Plugin            string `json:"plugin"`
+	PluginOpts        struct {
+		Mode string `json:"mode"`
+	} `json:"plugin-opts"`
+	Smux struct {
+		Enabled bool `json:"enabled"`
+	} `json:"smux"`
+}
 
-func (l *HTTPLoader) Load(r *http.Request) ([]byte, error) {
-	query := r.URL.Query()
-	targetURL := query.Get("url")
-	if targetURL == "" {
-		return nil, fmt.Errorf("missing url parameter")
-	}
-	resp, err := http.Get(targetURL)
+type HttpBase64Loader struct{}
+
+func (l *HttpBase64Loader) Load(remote string) ([]string, error) {
+	resp, err := http.Get(remote)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch target URL: %w", err)
 	}
@@ -40,12 +53,6 @@ func (l *HTTPLoader) Load(r *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
-	return data, nil
-}
-
-type Base64Decoder struct{}
-
-func (d *Base64Decoder) Decode(data []byte) ([]string, error) {
 	decoded, err := base64.StdEncoding.DecodeString(string(data))
 	if err != nil {
 		return nil, fmt.Errorf("base64 decode failed: %w", err)
@@ -54,90 +61,143 @@ func (d *Base64Decoder) Decode(data []byte) ([]string, error) {
 	return lines, nil
 }
 
-type ShadowSockSurgeRender struct {
+type ShadowSockParser struct {
 }
 
-func (r *ShadowSockSurgeRender) IsValid(line string) bool {
-	return strings.HasPrefix(line, "ss://")
-}
-
-func (r *ShadowSockSurgeRender) Render(line string) (string, error) {
+func (r *ShadowSockParser) Parse(line string) (bool, any, error) {
+	if !strings.HasPrefix(line, "ss://") {
+		return false, line, nil
+	}
 	u, err := url.Parse(line)
 	if err != nil {
-		return "", fmt.Errorf("invalid URL format: %w", err)
+		return true, nil, fmt.Errorf("invalid URL format: %w", err)
 	}
 	userInfo, err := base64.StdEncoding.DecodeString(u.User.Username())
 	if err != nil {
-		return "", fmt.Errorf("failed to decode user info: %w", err)
+		return true, nil, fmt.Errorf("failed to decode user info: %w", err)
 	}
 	parts := strings.Split(string(userInfo), ":")
 	if len(parts) != 2 {
-		return "", fmt.Errorf("invalid user info format")
+		return true, nil, fmt.Errorf("invalid user info format")
 	}
-	method, password := parts[0], parts[1]
-	remark := u.Fragment
-	if remark == "" {
-		return "", fmt.Errorf("empty remark")
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		return true, nil, fmt.Errorf("invalid port format: %w", err)
 	}
-	return fmt.Sprintf("%s=ss, %s,%s,encrypt-method=%s,password=\"%s\"",
-		remark, u.Hostname(), u.Port(), method, password), nil
+	cipher, password := parts[0], parts[1]
+	conf := ShadowSocks{
+		Name:              strings.TrimSpace(u.Fragment),
+		Type:              "ss",
+		Server:            u.Hostname(),
+		Port:              port,
+		Cipher:            cipher,
+		Password:          password,
+		Udp:               false,
+		UdpOverTcp:        false,
+		UdpOverTcpVersion: 0,
+		IpVersion:         "",
+		Plugin:            "",
+		PluginOpts: struct {
+			Mode string `json:"mode"`
+		}{},
+		Smux: struct {
+			Enabled bool `json:"enabled"`
+		}{},
+	}
+	return true, conf, nil
 }
 
-type SurgeMerger struct {
+type SurgeGenerator struct {
 }
 
-func (r *SurgeMerger) Merge(lines []string) (string, error) {
+func (r *SurgeGenerator) Generate(lines []any) (string, error) {
 	output := strings.Builder{}
 	output.WriteString("[Proxy]")
 	for _, line := range lines {
 		output.WriteString("\n")
-		output.WriteString(line)
+		switch v := line.(type) {
+		case ShadowSocks:
+			output.WriteString(fmt.Sprintf("%s = ss, %s, %d, encrypt-method=%s, password=\"%s\"",
+				v.Name,
+				v.Server,
+				v.Port,
+				v.Cipher,
+				v.Password,
+			))
+		}
 	}
 	return output.String(), nil
 }
 
-// ProxyHandler 组合各个组件处理请求
+type ClashGenerator struct {
+}
+
+func (r *ClashGenerator) Generate(lines []any) (string, error) {
+	output := strings.Builder{}
+	output.WriteString("proxies:\n")
+	for _, line := range lines {
+		bytes, err := json.Marshal(line)
+		if err != nil {
+			continue
+		}
+		output.WriteString("- ")
+		output.Write(bytes)
+
+	}
+	return output.String(), nil
+}
+
 type ProxyHandler struct {
-	loader  Loader
-	decoder Decoder
-	render  []Render
-	merger  Merger
+	loader    Loader
+	parser    []Parser
+	generator map[string]Generator
 }
 
 func NewProxyHandler() *ProxyHandler {
 	return &ProxyHandler{
-		loader:  &HTTPLoader{},
-		decoder: &Base64Decoder{},
-		render: []Render{
-			&ShadowSockSurgeRender{},
+		loader: &HttpBase64Loader{},
+		parser: []Parser{
+			&ShadowSockParser{},
 		},
-		merger: &SurgeMerger{},
+		generator: map[string]Generator{
+			"surge": &SurgeGenerator{},
+			"clash": &ClashGenerator{},
+		},
 	}
 }
 
 func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	data, err := h.loader.Load(r)
+	query := r.URL.Query()
+	targetURL := query.Get("url")
+	targetType := query.Get("target")
+	if targetURL == "" || targetType == "" {
+		http.Error(w, "target url or target type is empty", http.StatusBadRequest)
+		return
+	}
+	generator, ok := h.generator[strings.ToLower(targetType)]
+	if !ok {
+		http.Error(w, "target type not supported", http.StatusBadRequest)
+		return
+	}
+	lines, err := h.loader.Load(targetURL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	lines, err := h.decoder.Decode(data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	renderedLines := make([]string, 0, len(lines))
+	nodes := make([]any, 0, len(lines))
 	for _, line := range lines {
-		for _, render := range h.render {
-			if render.IsValid(line) {
-				if renderedLine, e := render.Render(line); e == nil {
-					renderedLines = append(renderedLines, renderedLine)
-				}
-				break
+		for _, parser := range h.parser {
+			ok, node, pErr := parser.Parse(line)
+			if !ok {
+				continue
 			}
+			if pErr != nil {
+				continue
+			}
+			nodes = append(nodes, node)
 		}
 	}
-	output, err := h.merger.Merge(renderedLines)
+	output, err := generator.Generate(nodes)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
