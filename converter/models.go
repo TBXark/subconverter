@@ -1,6 +1,6 @@
-package api
+package converter
 
-type SubRequestParams struct {
+type ConvertParams struct {
 	Target       string `form:"target"`        // 必要参数，配置类型如surge&ver=4
 	URL          string `form:"url"`           // 可选，订阅链接URLEncode处理
 	Group        string `form:"group"`         // 可选，设置订阅组名

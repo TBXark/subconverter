@@ -1,4 +1,4 @@
-package api
+package converter
 
 import (
 	"encoding/json"
@@ -8,12 +8,12 @@ import (
 )
 
 type Generator interface {
-	Generate(proxies []any, params *SubRequestParams) (string, error)
+	Generate(proxies []any, params *ConvertParams) (string, error)
 }
 
 type SurgeGenerator struct{}
 
-func (r *SurgeGenerator) Generate(lines []any, params *SubRequestParams) (string, error) {
+func (r *SurgeGenerator) Generate(lines []any, params *ConvertParams) (string, error) {
 	output := strings.Builder{}
 	output.WriteString("[Proxy]")
 	for _, line := range lines {
@@ -39,7 +39,7 @@ func (r *SurgeGenerator) Generate(lines []any, params *SubRequestParams) (string
 
 type ClashGenerator struct{}
 
-func (r *ClashGenerator) Generate(lines []any, params *SubRequestParams) (string, error) {
+func (r *ClashGenerator) Generate(lines []any, params *ConvertParams) (string, error) {
 	output := strings.Builder{}
 	output.WriteString("proxies:\n")
 	for _, line := range lines {

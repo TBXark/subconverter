@@ -1,4 +1,4 @@
-package api
+package converter
 
 import (
 	"encoding/base64"
@@ -9,11 +9,11 @@ import (
 )
 
 type Parser interface {
-	Parse(line string, params *SubRequestParams) (bool, any, error)
+	Parse(line string, params *ConvertParams) (bool, any, error)
 }
 type ShadowSockParser struct{}
 
-func (r *ShadowSockParser) Parse(line string, params *SubRequestParams) (bool, any, error) {
+func (r *ShadowSockParser) Parse(line string, params *ConvertParams) (bool, any, error) {
 	if !strings.HasPrefix(line, "ss://") {
 		return false, line, nil
 	}
