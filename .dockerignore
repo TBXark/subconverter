@@ -1,0 +1,7 @@
+.idea
+.github
+build
+.gitattributes
+.golangci.yml
+/docker-compose.yaml
+/README.md

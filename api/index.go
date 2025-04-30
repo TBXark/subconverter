@@ -48,7 +48,9 @@ func (l *HttpBase64Loader) Load(remote string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch target URL: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
@@ -61,8 +63,7 @@ func (l *HttpBase64Loader) Load(remote string) ([]string, error) {
 	return lines, nil
 }
 
-type ShadowSockParser struct {
-}
+type ShadowSockParser struct{}
 
 func (r *ShadowSockParser) Parse(line string) (bool, any, error) {
 	if !strings.HasPrefix(line, "ss://") {
@@ -107,8 +108,7 @@ func (r *ShadowSockParser) Parse(line string) (bool, any, error) {
 	return true, conf, nil
 }
 
-type SurgeGenerator struct {
-}
+type SurgeGenerator struct{}
 
 func (r *SurgeGenerator) Generate(lines []any) (string, error) {
 	output := strings.Builder{}
@@ -129,8 +129,7 @@ func (r *SurgeGenerator) Generate(lines []any) (string, error) {
 	return output.String(), nil
 }
 
-type ClashGenerator struct {
-}
+type ClashGenerator struct{}
 
 func (r *ClashGenerator) Generate(lines []any) (string, error) {
 	output := strings.Builder{}
