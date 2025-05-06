@@ -24,13 +24,14 @@ func (r *SurgeGenerator) Generate(lines []any, params *ConvertParams) (string, e
 			if params.AppendType {
 				name = fmt.Sprintf("[ShadowSocks] %s", name)
 			}
-			output.WriteString(fmt.Sprintf("%s = ss, %s, %d, encrypt-method=%s, password=\"%s\", tfo=%s",
+			output.WriteString(fmt.Sprintf("%s = ss, %s, %d, encrypt-method=%s, password=\"%s\", tfo=%s, udp-relay=%s",
 				name,
 				v.Server,
 				v.Port,
 				v.Cipher,
 				v.Password,
 				strconv.FormatBool(params.TFO),
+				strconv.FormatBool(params.UDP),
 			))
 		}
 	}
