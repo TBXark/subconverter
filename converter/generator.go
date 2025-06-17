@@ -48,9 +48,9 @@ func (r *ClashGenerator) Generate(lines []any, params *ConvertParams) (string, e
 		if err != nil {
 			continue
 		}
-		output.WriteString("- ")
+		output.WriteString("  - ")
 		output.Write(bytes)
-
+		output.WriteString("\n")
 	}
 	return output.String(), nil
 }
