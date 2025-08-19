@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -26,10 +27,10 @@ func main() {
 		return
 	}
 
-	http.HandleFunc("/", api.Handler)
-	err := http.ListenAndServe(*addr, nil)
-	if err != nil {
+	engine := api.NewEngine()
+	log.Printf("Starting server on %s", *addr)
+	err := engine.Run(*addr)
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("Failed to start server: %v", err)
-		return
 	}
 }

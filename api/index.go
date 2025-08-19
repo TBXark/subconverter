@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Handler(w http.ResponseWriter, r *http.Request) {
+func NewEngine() *gin.Engine {
 	engine := gin.Default()
 	convert := converter.NewConverter()
 	engine.GET("/sub", func(ctx *gin.Context) {
@@ -24,5 +24,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx.String(http.StatusOK, res)
 	})
+	return engine
+}
+
+func Handler(w http.ResponseWriter, r *http.Request) {
+	engine := NewEngine()
 	engine.Handler().ServeHTTP(w, r)
 }
